@@ -1,0 +1,40 @@
+[
+  {
+    "file": "main.c",
+    "arguments": [
+      "/usr/bin/clang",
+      "-Wall",
+      "-Wpedantic",
+      "-Wextra",
+      "-Werror",
+      "-Wno-dollar-in-identifier-extension",
+      "-std=c23",
+      "main.c",
+      "-g",
+      "-I/usr/local/include/fuse",
+      "-o",
+      "main"
+    ],
+    "directory": "/Users/r0/personal/simpfs",
+    "output": "main"
+  },
+  {
+    "file": "main_helper.c",
+    "arguments": [
+      "/usr/bin/clang",
+      "-Wall",
+      "-Wpedantic",
+      "-Wextra",
+      "-Werror",
+      "-Wno-dollar-in-identifier-extension",
+      "-std=c23",
+      "-g",
+      "main_helper.c",
+      "-I/usr/local/include/fuse",
+      "-o",
+      "main"
+    ],
+    "directory": "/Users/r0/personal/simpfs",
+    "output": "main"
+  }
+]
