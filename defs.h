@@ -2,6 +2,7 @@
 #define DEFS_H
 
 #include <stdint.h>
+#include <time.h>
 #define META_INODE_QUANTITY 16
 #define META_NODE_QUANTITY 32
 #define META_SIZE 2
@@ -18,6 +19,12 @@ typedef struct inode {
   // array of offsets to nodes (basically pointers)
   uint32_t node_off;
   uint32_t parrent;
+  uint16_t uid;
+  uint16_t gid;
+  struct timespec atimespec;     /* time of last access */
+  struct timespec mtimespec;     /* time of last data modification */
+  struct timespec ctimespec;     /* time of last status change */
+  struct timespec birthtimespec; /* time of file creation(birth) */
   char name[FILE_NAME_LIM + 1];
 } inode_t;
 

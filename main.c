@@ -10,6 +10,7 @@
 #define FUSE_USE_VERSION 31
 #define FUSE_DARWIN_ENABLE_EXTENSIONS 0
 
+#include <assert.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -37,6 +38,15 @@ static void *r_init(struct fuse_conn_info *conn) {
 
     root_inode->name[0] = '/';
     root_inode->flags = DIR_FLAG | NODE_USED_FLAG;
+
+    struct fuse_context *ctx = fuse_get_context();
+    root_inode->gid = ctx->gid;
+    root_inode->uid = ctx->uid;
+
+    clock_gettime(CLOCK_REALTIME, &root_inode->atimespec);
+    clock_gettime(CLOCK_REALTIME, &root_inode->mtimespec);
+    clock_gettime(CLOCK_REALTIME, &root_inode->ctimespec);
+    clock_gettime(CLOCK_REALTIME, &root_inode->birthtimespec);
 
     int fd = open(_path, O_WRONLY, 0777);
     write(fd, root_inode, INODE_SIZE);
@@ -161,11 +171,6 @@ static int r_getattr(const char *path, struct stat *stbuf) {
   int res = 0;
 
   memset(stbuf, 0, sizeof(struct stat));
-  if (strcmp(path, "/") == 0) {
-    stbuf->st_mode = S_IFDIR | 0755;
-    stbuf->st_nlink = 2;
-    return res;
-  }
 
   int n;
   char **dir_path = get_dirs_from_path(path, &n);
@@ -185,6 +190,8 @@ static int r_getattr(const char *path, struct stat *stbuf) {
   free(dir_path);
 
   pread(fd, inode, INODE_SIZE, off);
+  clock_gettime(CLOCK_REALTIME, &inode->atimespec);
+  pwrite(fd, inode, INODE_SIZE, off);
 
   if ((inode->flags & NODE_USED_FLAG) == 0) {
     free(inode);
@@ -200,6 +207,13 @@ static int r_getattr(const char *path, struct stat *stbuf) {
     stbuf->st_nlink = 1;
     stbuf->st_size = r_get_file_size(fd, inode);
   }
+
+  stbuf->st_gid = inode->gid;
+  stbuf->st_uid = inode->uid;
+  stbuf->st_atimespec = inode->atimespec;
+  stbuf->st_ctimespec = inode->ctimespec;
+  stbuf->st_mtimespec = inode->mtimespec;
+  stbuf->st_birthtimespec = inode->birthtimespec;
 
   free(inode);
   close(fd);
@@ -230,6 +244,8 @@ static int r_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     return -ENOENT;
   }
   pread(fd, inode, INODE_SIZE, off);
+  clock_gettime(CLOCK_REALTIME, &inode->atimespec);
+  pwrite(fd, inode, INODE_SIZE, off);
 
   filler(buf, ".", NULL, 0);
   filler(buf, "..", NULL, 0);
@@ -300,7 +316,21 @@ static int r_mkdir(const char *path, mode_t mode) {
   }
   inode->inode_off[i] = child_offset;
 
+  clock_gettime(CLOCK_REALTIME, &inode->atimespec);
+  clock_gettime(CLOCK_REALTIME, &inode->mtimespec);
   pwrite(fd, inode, INODE_SIZE, offset);
+
+  pread(fd, inode, INODE_SIZE, child_offset);
+
+  struct fuse_context *ctx = fuse_get_context();
+  inode->gid = ctx->gid;
+  inode->uid = ctx->uid;
+  clock_gettime(CLOCK_REALTIME, &inode->atimespec);
+  clock_gettime(CLOCK_REALTIME, &inode->mtimespec);
+  clock_gettime(CLOCK_REALTIME, &inode->ctimespec);
+  clock_gettime(CLOCK_REALTIME, &inode->birthtimespec);
+
+  pwrite(fd, inode, INODE_SIZE, child_offset);
 
   close(fd);
   free(dir_path);
@@ -351,6 +381,9 @@ static int r_unlink(const char *path) {
     }
   }
 
+  clock_gettime(CLOCK_REALTIME, &inode->atimespec);
+  clock_gettime(CLOCK_REALTIME, &inode->mtimespec);
+
   pwrite(fd, inode, INODE_SIZE, parrent);
 
   close(fd);
@@ -396,6 +429,9 @@ static int r_rmdir(const char *path) {
       inode->inode_off[i] = 0;
     }
   }
+
+  clock_gettime(CLOCK_REALTIME, &inode->atimespec);
+  clock_gettime(CLOCK_REALTIME, &inode->mtimespec);
   pwrite(fd, inode, INODE_SIZE, parrent_off);
 
   free(dir_path);
@@ -419,6 +455,9 @@ static int r_rename(const char *from, const char *to) {
   for (size_t i = 0; i < NAME_MAX && i < strlen(new_name); i++) {
     inode->name[i] = new_name[i];
   }
+
+  clock_gettime(CLOCK_REALTIME, &inode->atimespec);
+  clock_gettime(CLOCK_REALTIME, &inode->mtimespec);
   pwrite(fd, inode, INODE_SIZE, offset);
 
   free(dir_path_to);
@@ -434,18 +473,6 @@ static int r_rename(const char *from, const char *to) {
 //   int res;
 //
 //   res = chmod(path, mode);
-//   if (res == -1)
-//     return -errno;
-//
-//   return 0;
-// }
-//
-// static int xmp_chown(const char *path, uid_t uid, gid_t gid,
-//                      struct fuse_file_info *fi) {
-//   (void)fi;
-//   int res;
-//
-//   res = lchown(path, uid, gid);
 //   if (res == -1)
 //     return -errno;
 //
@@ -500,7 +527,20 @@ static int r_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
   }
   inode->inode_off[i] = child_offset;
 
+  clock_gettime(CLOCK_REALTIME, &inode->atimespec);
+  clock_gettime(CLOCK_REALTIME, &inode->mtimespec);
   pwrite(fd, inode, INODE_SIZE, offset);
+  pread(fd, inode, INODE_SIZE, child_offset);
+  struct fuse_context *ctx = fuse_get_context();
+
+  inode->gid = ctx->gid;
+  inode->uid = ctx->uid;
+  clock_gettime(CLOCK_REALTIME, &inode->atimespec);
+  clock_gettime(CLOCK_REALTIME, &inode->mtimespec);
+  clock_gettime(CLOCK_REALTIME, &inode->ctimespec);
+  clock_gettime(CLOCK_REALTIME, &inode->birthtimespec);
+
+  pwrite(fd, inode, INODE_SIZE, child_offset);
 
   close(fd);
   free(dir_path);
@@ -524,6 +564,10 @@ static int r_open(const char *path, struct fuse_file_info *fi) {
     return -ENOENT;
   }
 
+  pread(fd, inode, INODE_SIZE, offset);
+  clock_gettime(CLOCK_REALTIME, &inode->atimespec);
+  pwrite(fd, inode, INODE_SIZE, offset);
+
   free(dir_path);
   free(inode);
   close(fd);
@@ -544,7 +588,6 @@ static int r_read(const char *path, char *buf, size_t size, off_t offset,
   int fd = open(_path, O_RDWR, 0777);
   read(fd, inode, INODE_SIZE);
 
-  // find second to last dir in the path
   int inode_offset = r_find_inode_by_path(fd, inode, dir_path, n, 0);
   if (inode_offset == -1) {
     free(inode);
@@ -553,8 +596,9 @@ static int r_read(const char *path, char *buf, size_t size, off_t offset,
     return -ENFILE;
   }
 
-  // read inode of second to last dir
   pread(fd, inode, INODE_SIZE, inode_offset);
+  clock_gettime(CLOCK_REALTIME, &inode->atimespec);
+  pwrite(fd, inode, INODE_SIZE, inode_offset);
 
   size_t len = r_get_file_size(fd, inode) - offset;
   if (len > size + offset) {
@@ -659,6 +703,8 @@ static int r_write(const char *path, const char *buf, size_t size, off_t offset,
     pread(fd, node, NODE_SIZE, cur_node_off);
   }
 
+  clock_gettime(CLOCK_REALTIME, &inode->atimespec);
+  clock_gettime(CLOCK_REALTIME, &inode->mtimespec);
   pwrite(fd, inode, INODE_SIZE, inode_offset);
 
   while (size > 0) {
@@ -707,6 +753,35 @@ static int r_write(const char *path, const char *buf, size_t size, off_t offset,
   return n_read;
 }
 
+static int r_chown(const char *path, uid_t uid, gid_t gid) {
+  printf("chown\n");
+  int n;
+  char **dir_path = get_dirs_from_path(path, &n);
+  int fd = open(_path, O_RDONLY, 0777);
+  inode_t *inode = malloc(INODE_SIZE);
+  read(fd, inode, INODE_SIZE);
+  int offset = r_find_inode_by_path(fd, inode, dir_path, n, 0);
+  if (offset == -1) {
+    free(inode);
+    free(dir_path);
+    close(fd);
+    return -ENOENT;
+  }
+
+  pread(fd, inode, INODE_SIZE, offset);
+  inode->gid = gid;
+  inode->uid = uid;
+  clock_gettime(CLOCK_REALTIME, &inode->atimespec);
+  clock_gettime(CLOCK_REALTIME, &inode->mtimespec);
+  pwrite(fd, inode, INODE_SIZE, offset);
+  printf("gid: %d\nuid: %d\n", gid, uid);
+
+  free(dir_path);
+  free(inode);
+  close(fd);
+  return 0;
+}
+
 static int r_release(const char *path, struct fuse_file_info *fi) {
   (void)path;
   (void)fi;
@@ -722,7 +797,7 @@ static const struct fuse_operations r_oper = {
     .rmdir = r_rmdir,
     .rename = r_rename,
     // .chmod = xmp_chmod,
-    // .chown = xmp_chown,
+    .chown = r_chown,
     .open = r_open,
     .create = r_create,
     .read = r_read,
@@ -732,6 +807,21 @@ static const struct fuse_operations r_oper = {
 
 int main(int argc, char *argv[]) {
   umask(0);
+
+  struct fuse_args args = FUSE_ARGS_INIT(0, NULL);
+
+  for (int i = 0; i < argc; i++) {
+    assert(!fuse_opt_add_arg(&args, argv[i]));
+  }
+
+  assert(!fuse_opt_add_arg(&args, "-o"));
+  assert(!fuse_opt_add_arg(&args, "noappledouble"));
+  assert(!fuse_opt_add_arg(&args, "-o"));
+  assert(!fuse_opt_add_arg(&args, "allow_other"));
+
+  argc = args.argc;
+  argv = args.argv;
+
   char *rel_path = realpath("./", NULL);
   _path = concat(rel_path, "/data");
   if (_path == NULL) {

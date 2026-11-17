@@ -7,6 +7,10 @@ dump: dump.c main_helper.c defs.h
 val: main
 	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --verbose --log-file=valgrind-out.txt ./main fs
 
+leaks: main
+	leaks --atExit -- ./main fs -f
+
 c: clean
 clean:
-	rm -r main dump data main.dSYM
+	rm -r main dump data main.dSYM dump.dSYM
+	umount fs

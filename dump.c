@@ -20,6 +20,26 @@ void print_inode(inode_t *inode, int offset) {
   printf("\tinode(%s): %s\n", type, inode->name);
   printf("id:%d\n", offset);
   printf("parent:%d\n", inode->parrent);
+  printf("gid:%d\n", inode->gid);
+  printf("uid:%d\n", inode->uid);
+
+  char buffer[80];
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S",
+           localtime(&inode->atimespec.tv_sec));
+  printf("access time: %s\n", buffer);
+
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S",
+           localtime(&inode->mtimespec.tv_sec));
+  printf("modification time: %s\n", buffer);
+
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S",
+           localtime(&inode->ctimespec.tv_sec));
+  printf("creation time: %s\n", buffer);
+
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S",
+           localtime(&inode->birthtimespec.tv_sec));
+  printf("birth time: %s\n", buffer);
+
   printf("inodes:");
   for (int i = 0; i < INODE_INODE_LIM; i++) {
     int id = inode->inode_off[i];
